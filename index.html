@@ -161,7 +161,7 @@ aside{background:var(--card);border-left:1px solid var(--line);overflow:auto;pad
         <button data-azione="riordina">🧹 Riordina i blocchi</button>
         <button data-azione="numera">🔢 Numera i robot</button>
         <button data-azione="impostazioni">⚙️ Impostazioni</button>
-        <div class="tit" id="versioneApp">Versione 13-11-2026 · 4</div>
+        <div class="tit" id="versioneApp">Versione 13-11-2026 · 5</div>
       </div>
     </div>
   </header>
@@ -2987,7 +2987,7 @@ function toast(t) { const e = $('toast'); e.textContent = t; e.classList.add('on
 function avviso(t) { const a = $('avviso'); a.textContent = t || ''; a.classList.toggle('on', !!t); }
 
 function aggiornaSensori(stato) {
-  if (stato.dist !== undefined) $('vDist').textContent = stato.dist === null ? '–' : stato.dist + ' cm';
+  if (stato.dist !== undefined) $('vDist').textContent = stato.dist === null ? '–' : typeof stato.dist === 'string' ? stato.dist : stato.dist + ' cm';
   if (stato.linea) stato.linea.forEach((v, i) => $('l' + i).classList.toggle('nero', !!v));
   if (stato.testa !== undefined) $('vTesta').textContent = stato.testa + '°';
   if (stato.motori) $('vMotori').textContent = stato.motori[0] + ' · ' + stato.motori[1];
@@ -3231,7 +3231,18 @@ const sim = {
 // ---------------------------------------------------------------------
 const R = {
   sx: 0, dx: 0, n: 0, mantieni: null,
-  vel(p) { return Math.round(clamp(Number(p) || 0, -100, 100) * 2.55); },
+  // 1% = velocità minima che muove il robot, 100% = massima (sotto il 15 il robot sta fermo)
+  vel(p) {
+    p = Math.round(clamp(Number(p) || 0, -100, 100));
+    if (!p) return 0;
+    return Math.sign(p) * Math.round(15 + (Math.abs(p) - 1) * 240 / 99);
+  },
+  ultimaLinea: null, tLinea: 0, ultimaDist: null, avvisati: {},
+  avvisaUnaVolta(chiave, testo) {
+    if (this.avvisati[chiave]) return;
+    this.avvisati[chiave] = true;
+    registra(testo, true);
+  },
   controlla() { if (esecuzione.stop) throw STOP; },
 
   async blocco(id) {
@@ -3272,17 +3283,36 @@ const R = {
     let d;
     if (ble.connesso) {
       const r = await ble.chiedi('?D\n', 'D=');
-      d = r === null ? 0 : parseInt(r, 10) || 0;
-    } else { d = sim.distanza(); await sleep(30); }
-    aggiornaSensori({ dist: d });
+      if (r === null) {
+        // nessuna risposta: non inventiamo un ostacolo, teniamo l'ultima misura (o "via libera")
+        this.avvisaUnaVolta('dist', 'Il robot non risponde alla richiesta di distanza: controlla che abbia il programma robot_4wd.ino v7 (riquadro giallo) e il sensore a ultrasuoni collegato a D12/D13.');
+        aggiornaSensori({ dist: 'nessuna risposta' });
+        d = this.ultimaDist === null ? 400 : this.ultimaDist;
+      } else {
+        d = parseInt(r, 10) || 0;
+        if (d >= 400) this.avvisaUnaVolta('dist400', 'Il sensore a ultrasuoni non riceve eco (400 cm = niente davanti). Se c\'è un oggetto vicino, controlla i cavi del sensore: Trig su D12, Echo su D13.');
+        this.ultimaDist = d;
+        aggiornaSensori({ dist: d });
+      }
+    } else { d = sim.distanza(); await sleep(30); aggiornaSensori({ dist: d }); }
     this.controlla();
     return d;
   },
   async linea(i) {
     let l;
     if (ble.connesso) {
-      const r = await ble.chiedi('?L\n', 'L=');
-      l = r === null ? [0, 0, 0] : r.split(',').map(x => parseInt(x, 10) ? 1 : 0);
+      // una sola lettura serve per tutti e tre i sensori: se è recentissima la riusiamo
+      if (this.ultimaLinea && performance.now() - this.tLinea < 60) l = this.ultimaLinea;
+      else {
+        const r = await ble.chiedi('?L\n', 'L=');
+        if (r === null) {
+          this.avvisaUnaVolta('linea', 'Il robot non risponde alla richiesta del sensore linea: controlla che abbia il programma robot_4wd.ino v7.');
+          l = this.ultimaLinea || [0, 0, 0];
+        } else {
+          l = r.split(',').map(x => parseInt(x, 10) ? 1 : 0);
+          this.ultimaLinea = l; this.tLinea = performance.now();
+        }
+      }
     } else { l = sim.linea(); await sleep(15); }
     aggiornaSensori({ linea: l });
     this.controlla();
@@ -3497,6 +3527,7 @@ const esecuzione = {
     } catch (e) { registra('Errore nel programma: ' + e.message, true); return; }
 
     this.attiva = true; this.stop = false; aggiornaPulsanti();
+    R.avvisati = {}; R.ultimaLinea = null; R.ultimaDist = null;
     registra('▶ Programma avviato');
     try {
       await Promise.all(funzioni.map(fn => fn().catch(e => { if (e !== STOP) throw e; })));
@@ -3618,9 +3649,9 @@ const ESEMPI = {
     B('ct_per_sempre', { statements: { DO: { block: B('controls_if', { extraState: { elseIfCount: 1, hasElse: true },
       inputs: { IF0: { block: B('se_linea', { fields: { POS: '0' } }) }, IF1: { block: B('se_linea', { fields: { POS: '2' } }) } },
       statements: {
-        DO0: { block: B('mv_motori', { inputs: { SX: N(-25), DX: N(40) } }) },
-        DO1: { block: B('mv_motori', { inputs: { SX: N(40), DX: N(-25) } }) },
-        ELSE: { block: B('mv_motori', { inputs: { SX: N(40), DX: N(40) } }) }
+        DO0: { block: B('mv_motori', { inputs: { SX: N(-10), DX: N(20) } }) },
+        DO1: { block: B('mv_motori', { inputs: { SX: N(20), DX: N(-10) } }) },
+        ELSE: { block: B('mv_motori', { inputs: { SX: N(15), DX: N(15) } }) }
       } }) } } })),
   faccine: inizio(
     B('controls_repeat_ext', { inputs: { TIMES: N(3) }, statements: { DO: { block: catena(
