@@ -161,7 +161,7 @@ aside{background:var(--card);border-left:1px solid var(--line);overflow:auto;pad
         <button data-azione="riordina">🧹 Riordina i blocchi</button>
         <button data-azione="numera">🔢 Numera i robot</button>
         <button data-azione="impostazioni">⚙️ Impostazioni</button>
-        <div class="tit" id="versioneApp">Versione 29-10-2026 · 3</div>
+        <div class="tit" id="versioneApp">Versione 13-11-2026 · 4</div>
       </div>
     </div>
   </header>
@@ -248,7 +248,7 @@ aside{background:var(--card);border-left:1px solid var(--line);overflow:auto;pad
     <label for="taratura">Tempo per girare di 90° (millisecondi)</label>
     <input type="number" id="taratura" min="100" max="3000" step="10">
     <div class="nota">Il robot non ha sensori di rotazione: "gira di 90 gradi" ruota per questo tempo. Se gira troppo poco aumenta il numero, se gira troppo diminuiscilo. Ogni robot può avere un valore leggermente diverso.</div>
-    <label><input type="checkbox" id="tuttiBT"> Mostra tutti i dispositivi Bluetooth (non solo ROBOT…)</label>
+    <label><input type="checkbox" id="soloRobot"> Nell'elenco Bluetooth mostra solo i ROBOT… (su alcuni iPad non funziona)</label>
     <div class="azioni"><button id="impOk" class="primario">Chiudi</button></div>
   </div>
 </div>
@@ -2924,7 +2924,8 @@ const pref = {
   leggi(k, d) { try { const v = localStorage.getItem('robotblocchi.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
   scrivi(k, v) { try { localStorage.setItem('robotblocchi.' + k, JSON.stringify(v)); } catch (e) {} }
 };
-let impostazioni = { taratura: 450, tuttiBT: false, ...pref.leggi('impostazioni', {}) };
+let impostazioni = { taratura: 450, soloRobot: false, ...pref.leggi('impostazioni', {}) };
+delete impostazioni.tuttiBT;
 
 // ---------------------------------------------------------------------
 // Immagini della matrice (uguali a quelle del robot): 16 colonne, bit 0 = riga in alto
@@ -3022,23 +3023,30 @@ const ble = {
       return false;
     }
     if (this.connesso) this.dev.gatt.disconnect();
-    const opzioni = impostazioni.tuttiBT
-      ? { acceptAllDevices: true, optionalServices: [UUID_SERVIZIO] }
-      : { filters: [{ namePrefix: 'ROBOT' }], optionalServices: [UUID_SERVIZIO] };
+    // risposta immediata al tocco, così si vede che il pulsante ha funzionato
+    registra('🔍 Cerco i robot: scegli il tuo nell\'elenco Bluetooth…');
+    $('statoRobot').textContent = 'Ricerca…';
+    const tutti = { acceptAllDevices: true, optionalServices: [UUID_SERVIZIO] };
+    const soloRobot = { filters: [{ namePrefix: 'ROBOT' }], optionalServices: [UUID_SERVIZIO] };
+    const primo = impostazioni.soloRobot ? soloRobot : tutti;
+    const secondo = impostazioni.soloRobot ? tutti : soloRobot;
+    const attesa = setTimeout(() => registra('Il browser non ha ancora aperto l\'elenco Bluetooth. Controlla: Impostazioni iPad → Privacy e sicurezza → Bluetooth → Bluefy attivo.', true), 8000);
     let dev;
-    try { dev = await navigator.bluetooth.requestDevice(opzioni); }
+    try { dev = await navigator.bluetooth.requestDevice(primo); }
     catch (e) {
-      if (e && e.name === 'NotFoundError') return false;            // elenco chiuso senza scegliere
-      // alcuni browser (es. Bluefy su iPad) non accettano il filtro: riprova mostrando tutti i dispositivi
-      registra('Ricerca filtrata non riuscita (' + descriviErrore(e) + '): mostro tutti i dispositivi.');
-      try { dev = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [UUID_SERVIZIO] }); }
+      if (e && e.name === 'NotFoundError') { clearTimeout(attesa); registra('Nessun robot scelto.'); aggiornaVista(); return false; }
+      registra('Primo tentativo non riuscito (' + descriviErrore(e) + '): riprovo in un altro modo.');
+      try { dev = await navigator.bluetooth.requestDevice(secondo); }
       catch (e2) {
-        if (e2 && e2.name === 'NotFoundError') return false;
+        clearTimeout(attesa);
+        if (e2 && e2.name === 'NotFoundError') { registra('Nessun robot scelto.'); aggiornaVista(); return false; }
         registra('Bluetooth: ' + descriviErrore(e2), true);
         toast('Bluetooth non disponibile: controlla che sia acceso e che Bluefy abbia il permesso Bluetooth');
+        aggiornaVista();
         return false;
       }
     }
+    clearTimeout(attesa);
     $('statoRobot').textContent = 'Connessione…';
     try {
       const server = await dev.gatt.connect();
@@ -3901,13 +3909,13 @@ menu.addEventListener('click', e => {
     case 'riordina': workspace.cleanUp(); break;
     case 'numera': apriNumerazione(); break;
     case 'impostazioni':
-      $('taratura').value = impostazioni.taratura; $('tuttiBT').checked = impostazioni.tuttiBT;
+      $('taratura').value = impostazioni.taratura; $('soloRobot').checked = impostazioni.soloRobot;
       $('veloImpostazioni').classList.add('aperto'); break;
   }
 });
 $('impOk').onclick = () => {
   impostazioni.taratura = clamp(parseInt($('taratura').value, 10) || 450, 100, 3000);
-  impostazioni.tuttiBT = $('tuttiBT').checked;
+  impostazioni.soloRobot = $('soloRobot').checked;
   pref.scrivi('impostazioni', impostazioni);
   $('veloImpostazioni').classList.remove('aperto');
 };
