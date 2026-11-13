@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagnosi Bluetooth</title>
+<style>
+:root{--bg:#eef1f6;--card:#fff;--fg:#1d2330;--muted:#5f6b7a;--acc:#3373CC;--ok:#17663a;--okbg:#e7f7ec;--err:#a4262c;--errbg:#fdecec}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#14171d;--card:#1d2129;--fg:#e9edf3;--muted:#9aa3b2;--okbg:#14321f;--ok:#7fdc9c;--errbg:#3a1618;--err:#ff9a9f}}
+:root[data-theme="dark"]{--bg:#14171d;--card:#1d2129;--fg:#e9edf3;--muted:#9aa3b2;--okbg:#14321f;--ok:#7fdc9c;--errbg:#3a1618;--err:#ff9a9f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sans-serif;font-size:17px;padding:16px}
+main{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+h1{font-size:24px;margin:4px 0}
+.card{background:var(--card);border-radius:16px;padding:14px 16px}
+button{font:inherit;font-weight:700;border:0;border-radius:12px;padding:14px 16px;background:var(--acc);color:#fff;width:100%;text-align:left;min-height:52px;cursor:pointer}
+button:disabled{opacity:.5}
+.esito{margin-top:8px;padding:10px 12px;border-radius:10px;font-family:ui-monospace,Menlo,monospace;font-size:14px;white-space:pre-wrap;word-break:break-word;background:var(--bg)}
+.esito.ok{background:var(--okbg);color:var(--ok)}
+.esito.err{background:var(--errbg);color:var(--err)}
+.nota{color:var(--muted);font-size:15px;line-height:1.45}
+</style>
+</head>
+<body>
+<main>
+  <h1>Diagnosi Bluetooth · Robot Blocchi</h1>
+  <div class="card nota">Accendi un solo robot, chiudi l'app Keyes e Robot Blocchi. Premi i pulsanti <b>uno alla volta, dall'alto</b>. Quando si apre l'elenco Bluetooth scegli il robot. Alla fine fai uno screenshot di tutta la pagina.</div>
+
+  <div class="card"><b>0 · Informazioni</b><div class="esito" id="e0">…</div></div>
+
+  <div class="card"><button data-p="1">1 · Cerca tutti i dispositivi (senza altro)</button><div class="esito" id="e1">non ancora provato</div></div>
+  <div class="card"><button data-p="2">2 · Cerca tutti + servizio del modulo</button><div class="esito" id="e2">non ancora provato</div></div>
+  <div class="card"><button data-p="3">3 · Cerca solo i nomi "ROBOT…"</button><div class="esito" id="e3">non ancora provato</div></div>
+  <div class="card"><button data-p="4">4 · Cerca per servizio FFE0</button><div class="esito" id="e4">non ancora provato</div></div>
+  <div class="card"><button data-p="5">5 · Collegati e parla con il robot (usa il primo modo riuscito)</button><div class="esito" id="e5">non ancora provato</div></div>
+</main>
+<script>
+const SERV = '0000ffe0-0000-1000-8000-00805f9b34fb';
+const CAR  = '0000ffe1-0000-1000-8000-00805f9b34fb';
+const $ = id => document.getElementById(id);
+function scrivi(n, testo, tipo) { const e = $('e' + n); e.textContent = testo; e.className = 'esito ' + (tipo || ''); }
+function descrivi(e) {
+  const p = ['tipo: ' + (e === null ? 'null' : typeof e)];
+  try { p.push('String: ' + String(e)); } catch (x) {}
+  if (e && typeof e === 'object') {
+    if (e.name) p.push('name: ' + e.name);
+    if (e.message) p.push('message: ' + e.message);
+    if (e.code !== undefined) p.push('code: ' + e.code);
+    try { const j = JSON.stringify(e); if (j && j !== '{}') p.push('JSON: ' + j); } catch (x) {}
+    try { p.push('chiavi: ' + Object.getOwnPropertyNames(e).join(', ')); } catch (x) {}
+  }
+  return p.join('\n');
+}
+let dispositivo = null;
+const opzioni = {
+  1: { acceptAllDevices: true },
+  2: { acceptAllDevices: true, optionalServices: [SERV] },
+  3: { filters: [{ namePrefix: 'ROBOT' }], optionalServices: [SERV] },
+  4: { filters: [{ services: [SERV] }] }
+};
+
+(async () => {
+  const r = [];
+  r.push('Browser: ' + navigator.userAgent);
+  r.push('Pagina sicura (https): ' + window.isSecureContext);
+  r.push('navigator.bluetooth presente: ' + !!navigator.bluetooth);
+  if (navigator.bluetooth) {
+    r.push('requestDevice presente: ' + (typeof navigator.bluetooth.requestDevice));
+    try {
+      if (navigator.bluetooth.getAvailability) r.push('Bluetooth disponibile: ' + await navigator.bluetooth.getAvailability());
+      else r.push('getAvailability: non supportato');
+    } catch (e) { r.push('getAvailability errore: ' + descrivi(e)); }
+  }
+  scrivi(0, r.join('\n'));
+})();
+
+document.querySelectorAll('button[data-p]').forEach(b => b.addEventListener('click', async () => {
+  const n = b.dataset.p;
+  if (n === '5') return collega();
+  if (!navigator.bluetooth) { scrivi(n, 'navigator.bluetooth non esiste in questo browser', 'err'); return; }
+  scrivi(n, 'Attendo l\'elenco Bluetooth…');
+  try {
+    const d = await navigator.bluetooth.requestDevice(opzioni[n]);
+    dispositivo = dispositivo || d;
+    scrivi(n, 'RIUSCITO ✔ dispositivo scelto: ' + (d && d.name) + '\nid: ' + (d && d.id), 'ok');
+  } catch (e) { scrivi(n, 'ERRORE ✖\n' + descrivi(e), 'err'); }
+}));
+
+async function collega() {
+  if (!dispositivo) { scrivi(5, 'Prima fai riuscire uno dei pulsanti 1–4.', 'err'); return; }
+  const log = ['Dispositivo: ' + dispositivo.name];
+  const agg = (t, tipo) => { log.push(t); scrivi(5, log.join('\n'), tipo); };
+  try {
+    agg('1) connessione…'); const server = await dispositivo.gatt.connect(); agg('   ok');
+    agg('2) servizio FFE0…'); const s = await server.getPrimaryService(SERV); agg('   ok');
+    agg('3) caratteristica FFE1…'); const c = await s.getCharacteristic(CAR); agg('   ok · proprietà: ' + JSON.stringify(c.properties));
+    let risposta = '';
+    try {
+      agg('4) notifiche…'); await c.startNotifications();
+      c.addEventListener('characteristicvaluechanged', ev => { risposta += new TextDecoder().decode(ev.target.value); });
+      agg('   ok');
+    } catch (e) { agg('   notifiche NON riuscite: ' + descrivi(e)); }
+    agg('5) chiedo la versione (?P)…');
+    const dati = new TextEncoder().encode('?P\n');
+    try { if (c.properties.writeWithoutResponse) await c.writeValueWithoutResponse(dati); else await c.writeValue(dati); agg('   inviato'); }
+    catch (e) { agg('   invio NON riuscito: ' + descrivi(e), 'err'); return; }
+    await new Promise(r => setTimeout(r, 1500));
+    agg('   risposta del robot: ' + (risposta.trim() || '(nessuna)'), risposta.includes('P=') ? 'ok' : 'err');
+    dispositivo.gatt.disconnect();
+  } catch (e) { agg('ERRORE ✖\n' + descrivi(e), 'err'); }
+}
+</script>
+</body>
+</html>
