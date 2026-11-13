@@ -22,6 +22,7 @@
   --warnbg:#3a2a12; --warn:#f5b041; --shadow:0 2px 10px rgba(0,0,0,.4);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none !important}
 html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none}
 body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px}
 button{font:inherit;color:inherit;border:0;border-radius:12px;background:var(--bg);padding:10px 14px;cursor:pointer;min-height:44px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
@@ -91,6 +92,23 @@ aside{background:var(--card);border-left:1px solid var(--line);overflow:auto;pad
 .esito.ok,.esito.err,.esito:not(:empty){padding:10px 12px;background:var(--bg)}
 .esito.ok{background:#e7f7ec;color:#17663a}
 .esito.err{background:#fdecec;color:#a4262c}
+#nomeProgramma{font-size:14px;font-weight:600;background:var(--bg);max-width:240px;overflow:hidden;text-overflow:ellipsis;display:inline-block;line-height:24px}
+.finestra.larga{width:min(680px,100%)}
+.dove{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px;color:var(--muted);margin-bottom:12px}
+.dovebtn{display:flex;gap:6px;flex-wrap:wrap}
+.dovebtn button{font-size:13px;min-height:36px;padding:6px 10px}
+.salvaRiga{display:flex;gap:8px}
+.salvaRiga input{flex:1;min-width:0;font:inherit;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+.elenco{margin-top:12px;border:1px solid var(--line);border-radius:14px;max-height:46vh;overflow:auto}
+.voce{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line)}
+.voce:last-child{border-bottom:0}
+.voce.attuale{background:var(--bg)}
+.voce .info{flex:1;min-width:0;display:flex;flex-direction:column}
+.voce .info b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.voce .info small{color:var(--muted);font-size:12px}
+.voce .bottoni{display:flex;gap:4px;flex-shrink:0}
+.voce .bottoni button{min-height:36px;padding:6px 9px;font-size:13px}
+.vuoto{padding:18px;color:var(--muted);text-align:center;font-size:14px}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:#1d2330;color:#fff;padding:12px 16px;border-radius:12px;opacity:0;transition:.25s;pointer-events:none;z-index:200;max-width:90vw;text-align:center}
 #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 
@@ -104,6 +122,8 @@ aside{background:var(--card);border-left:1px solid var(--line);overflow:auto;pad
 @media (max-width: 560px){
   aside{grid-template-columns:1fr}
   .logo span{display:none}
+  #nomeProgramma{max-width:130px}
+  .voce{flex-wrap:wrap}
   #avvia,#ferma{padding:10px 12px}
 }
 
@@ -116,6 +136,7 @@ aside{background:var(--card);border-left:1px solid var(--line);overflow:auto;pad
       <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="9" width="22" height="16" rx="5" fill="#4C97FF"/><circle cx="12" cy="17" r="3" fill="#fff"/><circle cx="20" cy="17" r="3" fill="#fff"/><rect x="14.5" y="3" width="3" height="6" rx="1.5" fill="#FFAB19"/><rect x="2" y="13" width="3" height="8" rx="1.5" fill="#59C059"/><rect x="27" y="13" width="3" height="8" rx="1.5" fill="#59C059"/></svg>
       <span>Robot Blocchi</span>
     </div>
+    <button id="nomeProgramma" title="I miei programmi">📄 Senza nome</button>
     <span id="statoRobot">Simulatore</span>
     <button id="connetti" class="primario">Connetti robot</button>
     <div class="spazio"></div>
@@ -125,8 +146,8 @@ aside{background:var(--card);border-left:1px solid var(--line);overflow:auto;pad
       <button id="apriMenu" aria-label="Menu">☰</button>
       <div id="menu">
         <button data-azione="nuovo">📄 Nuovo programma</button>
-        <button data-azione="apri">📂 Apri file…</button>
-        <button data-azione="salva">💾 Salva file</button>
+        <button data-azione="archivio">📁 I miei programmi…</button>
+        <button data-azione="salva">💾 Salva <small>(Ctrl/⌘+S)</small></button>
         <div class="sep"></div>
         <div class="tit">Esempi</div>
         <button data-esempio="primo">1 · Primo programma</button>
@@ -140,6 +161,7 @@ aside{background:var(--card);border-left:1px solid var(--line);overflow:auto;pad
         <button data-azione="riordina">🧹 Riordina i blocchi</button>
         <button data-azione="numera">🔢 Numera i robot</button>
         <button data-azione="impostazioni">⚙️ Impostazioni</button>
+        <div class="tit" id="versioneApp">Versione 29-10-2026 · 3</div>
       </div>
     </div>
   </header>
@@ -183,7 +205,26 @@ aside{background:var(--card);border-left:1px solid var(--line);overflow:auto;pad
   </main>
 </div>
 
-<input type="file" id="fileInput" accept=".json,application/json" hidden>
+<input type="file" id="fileInput" accept=".json,application/json" multiple hidden>
+
+<div class="velo" id="veloArchivio">
+  <div class="finestra larga">
+    <h2>I miei programmi</h2>
+    <div class="dove"><span id="doveTesto"></span>
+      <span class="dovebtn"><button id="riapriCartella" hidden></button><button id="sceltaCartella" hidden></button><button id="usaBrowser" hidden>🌐 Usa il browser</button></span>
+    </div>
+    <div class="salvaRiga">
+      <input id="nomeSalva" placeholder="Nome del programma" maxlength="60" autocomplete="off">
+      <button id="salvaQui" class="primario">💾 Salva</button>
+    </div>
+    <div id="elenco" class="elenco"></div>
+    <div class="azioni">
+      <button id="importa">📥 Importa file…</button>
+      <button id="esportaTutti">📤 Esporta tutti</button>
+      <button id="archivioChiudi">Chiudi</button>
+    </div>
+  </div>
+</div>
 
 <div class="velo" id="veloDisegno">
   <div class="finestra">
@@ -2953,7 +2994,18 @@ function aggiornaSensori(stato) {
 
 // ---------------------------------------------------------------------
 // Bluetooth (modulo HM-10: servizio FFE0, caratteristica FFE1)
+// UUID scritti per intero: alcuni browser per iPad non accettano la forma corta
 // ---------------------------------------------------------------------
+const UUID_SERVIZIO = '0000ffe0-0000-1000-8000-00805f9b34fb';
+const UUID_CARATTERISTICA = '0000ffe1-0000-1000-8000-00805f9b34fb';
+function descriviErrore(e) {
+  if (!e) return 'errore sconosciuto';
+  if (typeof e === 'string') return e;
+  const t = [e.name, e.message].filter(Boolean).join(': ');
+  if (t) return t;
+  try { const j = JSON.stringify(e); if (j && j !== '{}') return j; } catch (x) {}
+  return String(e);
+}
 const ble = {
   dev: null, ch: null, coda: Promise.resolve(), rx: '', attese: [], versione: 0, numero: null,
   get nome() {
@@ -2971,16 +3023,27 @@ const ble = {
     }
     if (this.connesso) this.dev.gatt.disconnect();
     const opzioni = impostazioni.tuttiBT
-      ? { acceptAllDevices: true, optionalServices: [0xFFE0] }
-      : { filters: [{ namePrefix: 'ROBOT' }], optionalServices: [0xFFE0] };
+      ? { acceptAllDevices: true, optionalServices: [UUID_SERVIZIO] }
+      : { filters: [{ namePrefix: 'ROBOT' }], optionalServices: [UUID_SERVIZIO] };
     let dev;
     try { dev = await navigator.bluetooth.requestDevice(opzioni); }
-    catch (e) { if (e.name !== 'NotFoundError') registra('Bluetooth: ' + e.message, true); return false; }
+    catch (e) {
+      if (e && e.name === 'NotFoundError') return false;            // elenco chiuso senza scegliere
+      // alcuni browser (es. Bluefy su iPad) non accettano il filtro: riprova mostrando tutti i dispositivi
+      registra('Ricerca filtrata non riuscita (' + descriviErrore(e) + '): mostro tutti i dispositivi.');
+      try { dev = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [UUID_SERVIZIO] }); }
+      catch (e2) {
+        if (e2 && e2.name === 'NotFoundError') return false;
+        registra('Bluetooth: ' + descriviErrore(e2), true);
+        toast('Bluetooth non disponibile: controlla che sia acceso e che Bluefy abbia il permesso Bluetooth');
+        return false;
+      }
+    }
     $('statoRobot').textContent = 'Connessione…';
     try {
       const server = await dev.gatt.connect();
-      const servizio = await server.getPrimaryService(0xFFE0);
-      const ch = await servizio.getCharacteristic(0xFFE1);
+      const servizio = await server.getPrimaryService(UUID_SERVIZIO);
+      const ch = await servizio.getCharacteristic(UUID_CARATTERISTICA);
       this.dev = dev; this.ch = ch; this.rx = '';
       dev.addEventListener('gattserverdisconnected', () => this.disconnesso());
       try {
@@ -3003,7 +3066,7 @@ const ble = {
       aggiornaVista();
       return true;
     } catch (e) {
-      registra('Connessione non riuscita: ' + e.message, true);
+      registra('Connessione non riuscita: ' + descriviErrore(e), true);
       this.dev = null; this.ch = null; aggiornaVista();
       return false;
     }
@@ -3571,30 +3634,246 @@ function caricaEsempio(nome) {
   sim.riposiziona();
 }
 
+// ---------------------------------------------------------------------
+// I miei programmi: archivio nel browser oppure in una cartella del computer
+// ---------------------------------------------------------------------
+const corrente = { nome: pref.leggi('corrente', null), salvatoJSON: null, modificato: false };
+const statoJSON = () => JSON.stringify(Blockly.serialization.workspaces.save(workspace));
+const pacchetto = (nome, programma) => ({ app: 'robotblocchi', versione: 1, nome, programma });
+const pulisciNome = n => (n || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60);
+const dataBreve = t => t ? new Date(t).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+
+function aggiornaNome() {
+  const b = $('nomeProgramma');
+  b.textContent = '📄 ' + (corrente.nome || 'Senza nome') + (corrente.modificato ? ' •' : '');
+  b.title = corrente.modificato ? 'Modifiche non salvate' : 'Programma salvato';
+  pref.scrivi('corrente', corrente.nome);
+}
+function segnaSalvato(nome) {
+  corrente.nome = nome; corrente.salvatoJSON = statoJSON(); corrente.modificato = false; aggiornaNome();
+}
+
 let salvaTimer;
 workspace.addChangeListener(e => {
   if (e.isUiEvent) return;
   clearTimeout(salvaTimer);
-  salvaTimer = setTimeout(() => pref.scrivi('programma', Blockly.serialization.workspaces.save(workspace)), 400);
+  salvaTimer = setTimeout(() => {
+    const st = statoJSON();
+    pref.scrivi('programma', JSON.parse(st));               // copia di lavoro (si riapre da sola)
+    const mod = corrente.salvatoJSON !== null && st !== corrente.salvatoJSON;
+    if (mod !== corrente.modificato) { corrente.modificato = mod; aggiornaNome(); }
+    pref.scrivi('modificato', corrente.modificato);
+  }, 400);
 });
 
-function salvaFile() {
-  const dati = JSON.stringify({ app: 'robotblocchi', versione: 1, programma: Blockly.serialization.workspaces.save(workspace) }, null, 1);
-  const nome = (prompt('Nome del file:', 'mio-programma') || 'mio-programma').replace(/[^\w\- ]/g, '') + '.json';
+// --- archivio nel browser ---
+const archivioBrowser = {
+  tipo: 'browser',
+  tutti() { return pref.leggi('archivio', {}); },
+  salvaTutti(a) { try { localStorage.setItem('robotblocchi.archivio', JSON.stringify(a)); } catch (e) { throw new Error('La memoria del browser è piena o non disponibile'); } },
+  async elenco() { const a = this.tutti(); return Object.keys(a).map(nome => ({ nome, data: a[nome].data })); },
+  async leggi(n) { const a = this.tutti(); if (!a[n]) throw new Error('Programma non trovato'); return a[n].programma; },
+  async scrivi(n, prog) { const a = this.tutti(); a[n] = { data: Date.now(), programma: prog }; this.salvaTutti(a); },
+  async elimina(n) { const a = this.tutti(); delete a[n]; this.salvaTutti(a); },
+  async esiste(n) { return n in this.tutti(); }
+};
+
+// --- archivio in una cartella del computer (Chrome/Edge su PC e Mac) ---
+const archivioCartella = {
+  tipo: 'cartella', dir: null,
+  f(n) { return n + '.json'; },
+  async elenco() {
+    const out = [];
+    for await (const [nome, h] of this.dir.entries()) {
+      if (h.kind !== 'file' || !nome.toLowerCase().endsWith('.json')) continue;
+      try { const file = await h.getFile(); out.push({ nome: nome.slice(0, -5), data: file.lastModified }); } catch (e) {}
+    }
+    return out;
+  },
+  async leggi(n) {
+    const h = await this.dir.getFileHandle(this.f(n));
+    const d = JSON.parse(await (await h.getFile()).text());
+    return d.programma || d;
+  },
+  async scrivi(n, prog) {
+    const h = await this.dir.getFileHandle(this.f(n), { create: true });
+    const w = await h.createWritable(); await w.write(JSON.stringify(pacchetto(n, prog), null, 1)); await w.close();
+  },
+  async elimina(n) { await this.dir.removeEntry(this.f(n)); },
+  async esiste(n) { try { await this.dir.getFileHandle(this.f(n)); return true; } catch (e) { return false; } }
+};
+let archivio = archivioBrowser;
+let cartellaDaRiaprire = null;
+const cartelleSupportate = typeof window.showDirectoryPicker === 'function';
+
+// Per sicurezza non si conserva l'accesso alla cartella tra una sessione e l'altra:
+// si ricorda solo il nome e alla riapertura basta confermare la cartella (il selettore
+// si apre gia' li').
+async function permesso(h) {
+  if (!h.requestPermission) return true;
+  const o = { mode: 'readwrite' };
+  if (h.queryPermission && (await h.queryPermission(o)) === 'granted') return true;
+  return (await h.requestPermission(o)) === 'granted';
+}
+async function scegliCartella() {
+  try {
+    const h = await window.showDirectoryPicker({ id: 'robotblocchi', mode: 'readwrite' });
+    if (!(await permesso(h))) { toast('Permesso negato per la cartella'); return false; }
+    archivioCartella.dir = h; archivio = archivioCartella; cartellaDaRiaprire = null;
+    pref.scrivi('cartellaNome', h.name);
+    toast('I programmi vengono salvati nella cartella "' + h.name + '"');
+    return true;
+  } catch (e) { if (e.name !== 'AbortError') toast('Cartella non disponibile: ' + e.message); return false; }
+  finally { aggiornaArchivio(); }
+}
+const riapriCartella = scegliCartella;
+function usaBrowser() { archivio = archivioBrowser; cartellaDaRiaprire = null; pref.scrivi('cartellaNome', null); aggiornaArchivio(); }
+
+// --- operazioni ---
+async function nomeLibero(base) {
+  let n = base, i = 2;
+  while (await archivio.esiste(n)) n = base + ' (' + (i++) + ')';
+  return n;
+}
+async function salva(nomeRichiesto) {
+  let nome = pulisciNome(nomeRichiesto || corrente.nome);
+  if (!nome) {
+    nome = pulisciNome(prompt('Come si chiama questo programma?', ''));
+    if (!nome) return false;
+  }
+  if (cartellaDaRiaprire && archivio.tipo === 'browser' &&
+      confirm('Di solito salvi nella cartella "' + cartellaDaRiaprire + '". Vuoi riaprirla e salvare lì?\n(Annulla = salva in questo browser)')) {
+    if (!(await scegliCartella())) return false;
+  }
+  try {
+    if (nome !== corrente.nome && await archivio.esiste(nome) && !confirm('Esiste già un programma "' + nome + '". Vuoi sostituirlo?')) return false;
+    await archivio.scrivi(nome, Blockly.serialization.workspaces.save(workspace));
+    segnaSalvato(nome);
+    toast('Salvato: ' + nome + (archivio.tipo === 'cartella' ? ' (cartella "' + archivio.dir.name + '")' : ''));
+    aggiornaArchivio();
+    return true;
+  } catch (e) { toast('Non riesco a salvare: ' + e.message); return false; }
+}
+function puoiLasciare() {
+  return !corrente.modificato || confirm('Il programma "' + (corrente.nome || 'Senza nome') + '" ha modifiche non salvate. Continuare e perderle?');
+}
+async function apriDaArchivio(nome) {
+  if (!puoiLasciare()) return;
+  try {
+    if (esecuzione.attiva) esecuzione.ferma();
+    caricaStato(await archivio.leggi(nome));
+    segnaSalvato(nome);
+    $('veloArchivio').classList.remove('aperto');
+    toast('Aperto: ' + nome);
+  } catch (e) { toast('Non riesco ad aprire "' + nome + '": ' + e.message); }
+}
+async function rinomina(nome) {
+  const nuovo = pulisciNome(prompt('Nuovo nome per "' + nome + '":', nome));
+  if (!nuovo || nuovo === nome) return;
+  try {
+    if (await archivio.esiste(nuovo)) { toast('Esiste già un programma con quel nome'); return; }
+    await archivio.scrivi(nuovo, await archivio.leggi(nome));
+    await archivio.elimina(nome);
+    if (corrente.nome === nome) { corrente.nome = nuovo; aggiornaNome(); }
+  } catch (e) { toast('Errore: ' + e.message); }
+  aggiornaArchivio();
+}
+async function duplica(nome) {
+  try { await archivio.scrivi(await nomeLibero(nome + ' copia'), await archivio.leggi(nome)); } catch (e) { toast('Errore: ' + e.message); }
+  aggiornaArchivio();
+}
+async function elimina(nome) {
+  if (!confirm('Eliminare il programma "' + nome + '"? Non si potrà recuperare.')) return;
+  try {
+    await archivio.elimina(nome);
+    if (corrente.nome === nome) { corrente.nome = null; corrente.salvatoJSON = null; corrente.modificato = false; aggiornaNome(); }
+  } catch (e) { toast('Errore: ' + e.message); }
+  aggiornaArchivio();
+}
+function scarica(nomeFile, oggetto) {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([dati], { type: 'application/json' }));
-  a.download = nome; document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(oggetto, null, 1)], { type: 'application/json' }));
+  a.download = nomeFile; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+}
+async function esporta(nome) {
+  try { scarica(nome + '.json', pacchetto(nome, await archivio.leggi(nome))); } catch (e) { toast('Errore: ' + e.message); }
+}
+async function esportaTutti() {
+  const elenco = await archivio.elenco();
+  if (!elenco.length) { toast('Non ci sono programmi da esportare'); return; }
+  const programmi = {};
+  for (const p of elenco) { try { programmi[p.nome] = await archivio.leggi(p.nome); } catch (e) {} }
+  scarica('robot-blocchi-programmi-' + new Date().toISOString().slice(0, 10) + '.json', { app: 'robotblocchi', versione: 1, programmi });
 }
 $('fileInput').onchange = async e => {
-  const file = e.target.files[0]; e.target.value = '';
-  if (!file) return;
-  try {
-    const dati = JSON.parse(await file.text());
-    caricaStato(dati.programma || dati);
-    toast('Programma aperto: ' + file.name);
-  } catch (err) { toast('Questo file non è un programma di Robot Blocchi'); }
+  const files = [...e.target.files]; e.target.value = '';
+  let n = 0, errori = 0;
+  for (const file of files) {
+    try {
+      const d = JSON.parse(await file.text());
+      const gruppo = d.programmi ? Object.entries(d.programmi)
+        : [[d.nome || file.name.replace(/\.json$/i, ''), d.programma || d]];
+      for (const [nome, prog] of gruppo) {
+        if (!prog || !prog.blocks) { errori++; continue; }
+        await archivio.scrivi(await nomeLibero(pulisciNome(nome) || 'Programma'), prog); n++;
+      }
+    } catch (err) { errori++; }
+  }
+  toast(n ? 'Importati ' + n + ' programmi' + (errori ? ' (' + errori + ' file non validi)' : '') : 'Nessun programma valido nei file scelti');
+  aggiornaArchivio();
 };
+
+// --- finestra "I miei programmi" ---
+async function aggiornaArchivio() {
+  if (!$('veloArchivio').classList.contains('aperto')) return;
+  const dove = $('doveTesto');
+  if (archivio.tipo === 'cartella') dove.innerHTML = '📁 Salvati nella cartella <b></b>', dove.querySelector('b').textContent = archivio.dir.name;
+  else dove.textContent = '🌐 Salvati in questo browser';
+  $('sceltaCartella').hidden = !cartelleSupportate || !!cartellaDaRiaprire;
+  $('sceltaCartella').textContent = archivio.tipo === 'cartella' ? '📁 Cambia cartella' : '📁 Usa una cartella del computer';
+  $('usaBrowser').hidden = archivio.tipo !== 'cartella';
+  $('riapriCartella').hidden = !cartellaDaRiaprire;
+  if (cartellaDaRiaprire) $('riapriCartella').textContent = '📁 Riapri la cartella "' + cartellaDaRiaprire + '"';
+  $('nomeSalva').value = corrente.nome || '';
+
+  const box = $('elenco');
+  let elenco = [];
+  try { elenco = await archivio.elenco(); } catch (e) { box.textContent = 'Non riesco a leggere i programmi: ' + e.message; return; }
+  elenco.sort((a, b) => (b.data || 0) - (a.data || 0));
+  box.innerHTML = '';
+  if (!elenco.length) { box.innerHTML = '<div class="vuoto">Nessun programma salvato. Scrivi un nome qui sopra e premi Salva.</div>'; return; }
+  for (const p of elenco) {
+    const r = document.createElement('div'); r.className = 'voce' + (p.nome === corrente.nome ? ' attuale' : '');
+    r.innerHTML = '<div class="info"><b></b><small></small></div><div class="bottoni">' +
+      '<button data-f="apri" class="primario">Apri</button><button data-f="rinomina" title="Rinomina">✏️</button>' +
+      '<button data-f="duplica" title="Duplica">⧉</button><button data-f="esporta" title="Esporta file">📤</button><button data-f="elimina" title="Elimina">🗑</button></div>';
+    r.querySelector('b').textContent = p.nome;
+    r.querySelector('small').textContent = dataBreve(p.data) + (p.nome === corrente.nome ? ' · aperto ora' : '');
+    r.querySelector('.bottoni').onclick = ev => {
+      const f = ev.target.closest('button'); if (!f) return;
+      ({ apri: apriDaArchivio, rinomina, duplica, esporta, elimina })[f.dataset.f](p.nome);
+    };
+    box.appendChild(r);
+  }
+}
+function apriArchivio() { $('veloArchivio').classList.add('aperto'); aggiornaArchivio(); }
+$('nomeProgramma').onclick = apriArchivio;
+$('salvaQui').onclick = () => salva($('nomeSalva').value);
+$('nomeSalva').addEventListener('keydown', e => { if (e.key === 'Enter') salva($('nomeSalva').value); });
+$('sceltaCartella').onclick = scegliCartella;
+$('usaBrowser').onclick = usaBrowser;
+$('riapriCartella').onclick = riapriCartella;
+$('importa').onclick = () => $('fileInput').click();
+$('esportaTutti').onclick = esportaTutti;
+$('archivioChiudi').onclick = () => $('veloArchivio').classList.remove('aperto');
+addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    if (corrente.nome) salva(corrente.nome); else apriArchivio();
+  }
+});
+addEventListener('beforeunload', e => { if (corrente.modificato && corrente.nome) { e.preventDefault(); e.returnValue = ''; } });
 
 const menu = $('menu');
 $('apriMenu').onclick = e => { e.stopPropagation(); menu.classList.toggle('aperto'); };
@@ -3603,15 +3882,20 @@ menu.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   menu.classList.remove('aperto');
   if (b.dataset.esempio) {
-    if (workspace.getAllBlocks(false).length > 1 && !confirm('Caricare l\'esempio? Il programma attuale verrà sostituito (salvalo prima se ti serve).')) return;
-    caricaEsempio(b.dataset.esempio); return;
+    if (corrente.modificato || !corrente.nome) {
+      if (workspace.getAllBlocks(false).length > 1 && !confirm('Caricare l\'esempio? Il programma attuale verrà sostituito' + (corrente.nome ? ' (le modifiche non salvate andranno perse).' : ' (salvalo prima se ti serve).'))) return;
+    }
+    caricaEsempio(b.dataset.esempio);
+    corrente.nome = null; corrente.salvatoJSON = null; corrente.modificato = false; aggiornaNome();
+    return;
   }
   switch (b.dataset.azione) {
     case 'nuovo':
-      if (!confirm('Cancellare il programma e iniziarne uno nuovo?')) return;
-      caricaStato({ blocks: { languageVersion: 0, blocks: [B('ev_avvio', { x: 40, y: 40 })] } }); break;
-    case 'apri': $('fileInput').click(); break;
-    case 'salva': salvaFile(); break;
+      if (corrente.modificato ? !puoiLasciare() : !confirm('Iniziare un programma nuovo?')) return;
+      caricaStato({ blocks: { languageVersion: 0, blocks: [B('ev_avvio', { x: 40, y: 40 })] } });
+      corrente.nome = null; corrente.salvatoJSON = null; corrente.modificato = false; aggiornaNome(); break;
+    case 'archivio': apriArchivio(); break;
+    case 'salva': if (corrente.nome) salva(corrente.nome); else apriArchivio(); break;
     case 'zoomPiu': workspace.zoomCenter(1); break;
     case 'zoomMeno': workspace.zoomCenter(-1); break;
     case 'riordina': workspace.cleanUp(); break;
@@ -3712,8 +3996,15 @@ sim.init();
 aggiornaVista();
 aggiornaPulsanti();
 const salvato = pref.leggi('programma', null);
-try { if (salvato && salvato.blocks) caricaStato(salvato); else caricaEsempio('primo'); }
-catch (e) { caricaEsempio('primo'); }
+try { if (salvato && salvato.blocks) caricaStato(salvato); else { caricaEsempio('primo'); corrente.nome = null; } }
+catch (e) { caricaEsempio('primo'); corrente.nome = null; }
+// la copia di lavoro riaperta corrisponde al programma salvato, salvo modifiche rimaste in sospeso
+corrente.salvatoJSON = corrente.nome ? statoJSON() : null;
+corrente.modificato = !!(corrente.nome && pref.leggi('modificato', false));
+if (corrente.modificato) corrente.salvatoJSON = '';
+aggiornaNome();
+// ricorda la cartella usata l'ultima volta (va solo riconfermata)
+if (cartelleSupportate) cartellaDaRiaprire = pref.leggi('cartellaNome', null);
 if (!navigator.bluetooth) registra('Bluetooth non disponibile in questo browser: puoi usare il simulatore. Per il robot usa Bluefy (iPad) o Chrome/Edge (PC).');
 else registra('Pronto. Premi "Connetti robot" oppure prova nel simulatore.');
 
