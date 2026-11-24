@@ -161,7 +161,7 @@ aside{background:var(--card);border-left:1px solid var(--line);overflow:auto;pad
         <button data-azione="riordina">🧹 Riordina i blocchi</button>
         <button data-azione="numera">🔢 Numera i robot</button>
         <button data-azione="impostazioni">⚙️ Impostazioni</button>
-        <div class="tit" id="versioneApp">Versione 13-11-2026 · 5</div>
+        <div class="tit" id="versioneApp">Versione 24-11-2026 · 6</div>
       </div>
     </div>
   </header>
@@ -3183,11 +3183,27 @@ const sim = {
     }
     return Math.max(0, Math.round(d - 12));
   },
+  // stesso comportamento di passoLinea() nel programma del robot
+  lineaVel: 0, ultimaDirLinea: 0, tLineaPersa: 0,
+  passoLinea(v) {
+    const [sx, c, dx] = this.linea(), lento = v / 3;
+    if (sx && dx) { this.tLineaPersa = 0; return [v, v]; }
+    if (sx) { this.ultimaDirLinea = -1; this.tLineaPersa = 0; return [c ? lento : -lento, v]; }
+    if (dx) { this.ultimaDirLinea = 1; this.tLineaPersa = 0; return [v, c ? lento : -lento]; }
+    if (c) { this.ultimaDirLinea = 0; this.tLineaPersa = 0; return [v, v]; }
+    if (!this.tLineaPersa) this.tLineaPersa = performance.now();
+    if (performance.now() - this.tLineaPersa > 1500) return [0, 0];
+    if (this.ultimaDirLinea < 0) return [-lento, v];
+    if (this.ultimaDirLinea > 0) return [v, -lento];
+    return [lento, lento];
+  },
   ciclo(t) {
     const dt = Math.min(0.05, (t - (this.ultimo || t)) / 1000); this.ultimo = t;
     if (!ble.connesso) {
       const vMax = 60;                                   // cm/s al 100%
-      const vl = R.sx / 100 * vMax, vr = R.dx / 100 * vMax;
+      let msx = R.sx, mdx = R.dx;
+      if (this.lineaVel) [msx, mdx] = this.passoLinea(this.lineaVel);
+      const vl = msx / 100 * vMax, vr = mdx / 100 * vMax;
       // carreggiata virtuale tarata in modo che "gira di 90°" sia preciso nel simulatore
       const T = impostazioni.taratura / 1000, v50 = vMax * 0.5;
       const carreggiata = (2 * v50) * T / (Math.PI / 2);
@@ -3257,7 +3273,36 @@ const R = {
     this.controlla();
   },
 
+  // Inseguimento linea fatto dal robot (robot_4wd.ino v9): l'app manda solo "W<velocità>"
+  lineaVel: 0, battitoLinea: null,
+  async seguiLinea(p) {
+    p = clamp(Math.round(Math.abs(Number(p) || 0)), 0, 100);
+    if (!p) return this.smettiLinea();
+    if (this.mantieni) { clearInterval(this.mantieni); this.mantieni = null; }
+    this.sx = 0; this.dx = 0;
+    this.lineaVel = p; sim.lineaVel = p;
+    aggiornaSensori({ motori: ['linea', p + '%'] });
+    if (ble.connesso) {
+      if (ble.versione < 9) this.avvisaUnaVolta('lineaV9', 'Per "segui la linea" serve sul robot il programma robot_4wd.ino versione 9.');
+      await ble.invia(`W${this.vel(p)}\n`);
+      if (!this.battitoLinea) this.battitoLinea = setInterval(() => {   // il robot si ferma se l'app tace per 1 s
+        if (this.lineaVel) ble.invia(`W${this.vel(this.lineaVel)}\n`);
+      }, 300);
+    }
+  },
+  fermaLineaLocale() {
+    this.lineaVel = 0; sim.lineaVel = 0;
+    if (this.battitoLinea) { clearInterval(this.battitoLinea); this.battitoLinea = null; }
+  },
+  async smettiLinea() {
+    const attiva = this.lineaVel;
+    this.fermaLineaLocale();
+    if (attiva) await ble.invia('W0\n');
+    await this.motori(0, 0);
+  },
+
   async motori(psx, pdx) {
+    this.fermaLineaLocale();
     this.sx = clamp(Math.round(Number(psx) || 0), -100, 100);
     this.dx = clamp(Math.round(Number(pdx) || 0), -100, 100);
     aggiornaSensori({ motori: [this.sx, this.dx] });
@@ -3330,6 +3375,7 @@ const R = {
   async disegno(hex) { mostraAnteprima(imgDa(hex)); await ble.invia(`Q${hex}\n`); },
 
   async fermaTutto() {
+    this.fermaLineaLocale();
     this.sx = 0; this.dx = 0;
     if (this.mantieni) { clearInterval(this.mantieni); this.mantieni = null; }
     aggiornaSensori({ motori: [0, 0] });
@@ -3363,6 +3409,10 @@ Blockly.common.defineBlocksWithJsonArray([
     previousStatement: null, nextStatement: null, colour: COL.movimento,
     tooltip: 'Da -100 (indietro) a 100 (avanti). I motori restano accesi finché non usi "fermati".' },
   { type: 'mv_ferma', message0: 'fermati', previousStatement: null, nextStatement: null, colour: COL.movimento },
+  { type: 'mv_segui_linea', message0: 'segui la linea a velocità %1 %%', args0: [num('VEL')], inputsInline: true,
+    previousStatement: null, nextStatement: null, colour: COL.movimento,
+    tooltip: 'Il robot segue la linea nera da solo, mentre il programma continua: usa poi "aspetta" e "smetti di seguire la linea".' },
+  { type: 'mv_smetti_linea', message0: 'smetti di seguire la linea', previousStatement: null, nextStatement: null, colour: COL.movimento },
 
   { type: 'se_distanza', message0: 'distanza ostacolo (cm)', output: 'Number', colour: COL.sensori,
     tooltip: 'Distanza misurata dal sensore a ultrasuoni, in centimetri.' },
@@ -3427,6 +3477,8 @@ f['mv_ruota'] = b => `await R.ruota('${b.getFieldValue('DIR')}', ${v(b, 'VEL')},
 f['mv_curva'] = b => `await R.curva('${b.getFieldValue('DIR')}', ${v(b, 'VEL')}, ${v(b, 'SEC')});\n`;
 f['mv_motori'] = b => `await R.motori(${v(b, 'SX')}, ${v(b, 'DX')});\n`;
 f['mv_ferma'] = () => 'await R.motori(0, 0);\n';
+f['mv_segui_linea'] = b => `await R.seguiLinea(${v(b, 'VEL', '20')});\n`;
+f['mv_smetti_linea'] = () => 'await R.smettiLinea();\n';
 f['se_distanza'] = () => ['(await R.distanza())', Ord.ATOMIC];
 f['se_linea'] = b => [`(await R.linea(${b.getFieldValue('POS')}))`, Ord.ATOMIC];
 f['se_testa'] = b => `await R.testa(${v(b, 'ANG', '90')});\n`;
@@ -3453,7 +3505,9 @@ const toolbox = {
       { kind: 'block', type: 'mv_ruota', inputs: { VEL: ombra(40), SEC: ombra(1) } },
       { kind: 'block', type: 'mv_curva', inputs: { VEL: ombra(50), SEC: ombra(1) } },
       { kind: 'block', type: 'mv_motori', inputs: { SX: ombra(50), DX: ombra(50) } },
-      { kind: 'block', type: 'mv_ferma' }
+      { kind: 'block', type: 'mv_ferma' },
+      { kind: 'block', type: 'mv_segui_linea', inputs: { VEL: ombra(20) } },
+      { kind: 'block', type: 'mv_smetti_linea' }
     ] },
     { kind: 'category', name: 'Sensori', colour: COL.sensori, contents: [
       { kind: 'block', type: 'se_distanza' },
@@ -3646,13 +3700,11 @@ const ESEMPI = {
         ELSE: { block: catena(B('mx_icona', { fields: { ICONA: '4' } }), B('mv_motori', { inputs: { SX: N(40), DX: N(40) } })) }
       } }) } } })),
   linea: inizio(
-    B('ct_per_sempre', { statements: { DO: { block: B('controls_if', { extraState: { elseIfCount: 1, hasElse: true },
-      inputs: { IF0: { block: B('se_linea', { fields: { POS: '0' } }) }, IF1: { block: B('se_linea', { fields: { POS: '2' } }) } },
-      statements: {
-        DO0: { block: B('mv_motori', { inputs: { SX: N(-10), DX: N(20) } }) },
-        DO1: { block: B('mv_motori', { inputs: { SX: N(20), DX: N(-10) } }) },
-        ELSE: { block: B('mv_motori', { inputs: { SX: N(15), DX: N(15) } }) }
-      } }) } } })),
+    B('mx_icona', { fields: { ICONA: '4' } }),
+    B('mv_segui_linea', { inputs: { VEL: N(20) } }),
+    B('ct_aspetta', { inputs: { SEC: N(20) } }),
+    B('mv_smetti_linea'),
+    B('mx_icona', { fields: { ICONA: '1' } })),
   faccine: inizio(
     B('controls_repeat_ext', { inputs: { TIMES: N(3) }, statements: { DO: { block: catena(
       B('mx_icona', { fields: { ICONA: '1' } }), B('ct_aspetta', { inputs: { SEC: N(0.6) } }),
