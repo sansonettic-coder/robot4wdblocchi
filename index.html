@@ -109,6 +109,10 @@ aside{background:var(--card);border-left:1px solid var(--line);overflow:auto;pad
 .voce .bottoni{display:flex;gap:4px;flex-shrink:0}
 .voce .bottoni button{min-height:36px;padding:6px 9px;font-size:13px}
 .vuoto{padding:18px;color:var(--muted);text-align:center;font-size:14px}
+.sez{font-size:15px;margin:18px 0 2px;padding-top:12px;border-top:1px solid var(--line)}
+.sez:first-of-type{border-top:0;padding-top:0;margin-top:4px}
+.tarBottoni{margin-top:12px}
+.tarBottoni button{background:var(--acc);color:#fff;font-weight:600}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:#1d2330;color:#fff;padding:12px 16px;border-radius:12px;opacity:0;transition:.25s;pointer-events:none;z-index:200;max-width:90vw;text-align:center}
 #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 
@@ -161,7 +165,7 @@ aside{background:var(--card);border-left:1px solid var(--line);overflow:auto;pad
         <button data-azione="riordina">🧹 Riordina i blocchi</button>
         <button data-azione="numera">🔢 Numera i robot</button>
         <button data-azione="impostazioni">⚙️ Impostazioni</button>
-        <div class="tit" id="versioneApp">Versione 24-11-2026 · 6</div>
+        <div class="tit" id="versioneApp">Versione 24-11-2026 · 7</div>
       </div>
     </div>
   </header>
@@ -245,9 +249,20 @@ aside{background:var(--card);border-left:1px solid var(--line);overflow:auto;pad
 <div class="velo" id="veloImpostazioni">
   <div class="finestra">
     <h2>Impostazioni</h2>
-    <label for="taratura">Tempo per girare di 90° (millisecondi)</label>
+    <h3 class="sez">Taratura del robot collegato</h3>
+    <div class="nota" id="tarStato">Collega un robot per tararlo.</div>
+    <label for="tarMs">Tempo per girare di 90° (millisecondi)</label>
+    <input type="number" id="tarMs" min="100" max="3000" step="10">
+    <label for="tarCorr">Correzione per andare dritto (da −25 a +25)</label>
+    <input type="number" id="tarCorr" min="-25" max="25" step="1">
+    <div class="riga tarBottoni"><button id="tarGiro">↻ Prova: 4 giri da 90°</button><button id="tarDritto">↑ Prova: dritto 2 secondi</button></div>
+    <div class="nota"><b>Come tarare</b> (sul pavimento dove giocherete):<br>
+      1. Allinea il robot a una riga del pavimento e premi <b>4 giri da 90°</b>: deve tornare a guardare nella direzione di partenza. Se gira troppo poco aumenta il tempo, se gira troppo diminuiscilo (a passi di 10–20).<br>
+      2. Premi <b>dritto 2 secondi</b>: se curva a destra diminuisci la correzione (es. −3), se curva a sinistra aumentala.<br>
+      Ogni prova salva i valori nel robot: valgono con qualsiasi tablet.</div>
+    <h3 class="sez">Altre impostazioni</h3>
+    <label for="taratura">Tempo per 90° nel simulatore e nei robot con programma vecchio (millisecondi)</label>
     <input type="number" id="taratura" min="100" max="3000" step="10">
-    <div class="nota">Il robot non ha sensori di rotazione: "gira di 90 gradi" ruota per questo tempo. Se gira troppo poco aumenta il numero, se gira troppo diminuiscilo. Ogni robot può avere un valore leggermente diverso.</div>
     <label><input type="checkbox" id="soloRobot"> Nell'elenco Bluetooth mostra solo i ROBOT… (su alcuni iPad non funziona)</label>
     <div class="azioni"><button id="impOk" class="primario">Chiudi</button></div>
   </div>
@@ -3315,12 +3330,39 @@ const R = {
       }, 250);
     }
   },
-  async muovi(a, b, sec) { await this.motori(a, b); await this.attendi(sec); await this.motori(0, 0); },
+  // Con robot_4wd.ino v10 i movimenti a tempo li cronometra il robot (preciso, e alla fine frena)
+  get robotPreciso() { return ble.connesso && ble.versione >= 10; },
+  async attendiRobot(comando, prefisso, msPrevisti) {
+    let finito = false;
+    ble.chiedi(comando, prefisso, msPrevisti + 3000).then(() => { finito = true; });
+    while (!finito) { this.controlla(); await sleep(25); }
+  },
+  async muovi(a, b, sec) {
+    if (this.robotPreciso) {
+      this.fermaLineaLocale();
+      if (this.mantieni) { clearInterval(this.mantieni); this.mantieni = null; }
+      const sa = clamp(Math.round(Number(a) || 0), -100, 100), sb = clamp(Math.round(Number(b) || 0), -100, 100);
+      const ms = Math.round(Math.max(0, Number(sec) || 0) * 1000);
+      this.sx = 0; this.dx = 0;
+      aggiornaSensori({ motori: [sa, sb] });
+      await this.attendiRobot(`G${this.vel(sa)},${this.vel(sb)},${ms}\n`, 'G=', ms);
+      aggiornaSensori({ motori: [0, 0] });
+      return;
+    }
+    await this.motori(a, b); await this.attendi(sec); await this.motori(0, 0);
+  },
   async ruota(dir, v, sec) { v = Math.abs(Number(v) || 0); await this.muovi(dir === 'SX' ? -v : v, dir === 'SX' ? v : -v, sec); },
   async curva(dir, v, sec) { v = Number(v) || 0; const interna = Math.round(v * 0.35); await this.muovi(dir === 'SX' ? interna : v, dir === 'SX' ? v : interna, sec); },
   async gira(dir, gradi) {
     gradi = Number(gradi) || 0;
     if (gradi < 0) { gradi = -gradi; dir = dir === 'SX' ? 'DX' : 'SX'; }
+    if (this.robotPreciso) {                     // il robot usa la sua taratura salvata
+      this.fermaLineaLocale();
+      aggiornaSensori({ motori: [dir === 'SX' ? 'gira ←' : 'gira →', Math.round(gradi) + '°'] });
+      await this.attendiRobot(`A${Math.round(dir === 'SX' ? -gradi : gradi)}\n`, 'A=', gradi / 90 * 3000);
+      aggiornaSensori({ motori: [0, 0] });
+      return;
+    }
     await this.ruota(dir, 50, impostazioni.taratura * gradi / 90 / 1000);
   },
 
@@ -3993,10 +4035,63 @@ menu.addEventListener('click', e => {
     case 'numera': apriNumerazione(); break;
     case 'impostazioni':
       $('taratura').value = impostazioni.taratura; $('soloRobot').checked = impostazioni.soloRobot;
-      $('veloImpostazioni').classList.add('aperto'); break;
+      $('veloImpostazioni').classList.add('aperto');
+      apriTaratura(); break;
   }
 });
+// ---------------------------------------------------------------------
+// Taratura salvata nel robot (robot_4wd.ino v10)
+// ---------------------------------------------------------------------
+const taratura = { ms: 450, corr: 0, pot: 120, letta: false };
+function abilitaTaratura(si, testo) {
+  ['tarMs', 'tarCorr', 'tarGiro', 'tarDritto'].forEach(id => { $(id).disabled = !si; });
+  $('tarStato').textContent = testo;
+}
+async function apriTaratura() {
+  taratura.letta = false;
+  if (!ble.connesso) return abilitaTaratura(false, 'Collega un robot per tararlo (serve il programma robot_4wd.ino versione 10).');
+  if (ble.versione < 10) return abilitaTaratura(false, 'Il robot ' + ble.nome + ' ha un programma vecchio: carica robot_4wd.ino versione 10 per salvare la taratura nel robot.');
+  abilitaTaratura(false, 'Leggo la taratura di ' + ble.nome + '…');
+  const r = await ble.chiedi('?K\n', 'K=', 1500);
+  if (r === null) return abilitaTaratura(false, 'Il robot non risponde: riprova.');
+  const [ms, corr, pot] = r.split(',').map(x => parseInt(x, 10));
+  Object.assign(taratura, { ms: ms || 450, corr: corr || 0, pot: pot || 120, letta: true });
+  $('tarMs').value = taratura.ms; $('tarCorr').value = taratura.corr;
+  abilitaTaratura(true, 'Taratura di ' + ble.nome + ' (salvata nel robot).');
+}
+async function salvaTaratura() {
+  if (!taratura.letta || !ble.connesso) return false;
+  taratura.ms = clamp(parseInt($('tarMs').value, 10) || 450, 100, 3000);
+  taratura.corr = clamp(parseInt($('tarCorr').value, 10) || 0, -25, 25);
+  $('tarMs').value = taratura.ms; $('tarCorr').value = taratura.corr;
+  const r = await ble.chiedi(`K${taratura.ms},${taratura.corr},${taratura.pot}\n`, 'K=', 1500);
+  if (r === null) { toast('Il robot non ha confermato la taratura'); return false; }
+  return true;
+}
+async function provaTaratura(azione) {
+  if (esecuzione.attiva) esecuzione.ferma();
+  ['tarGiro', 'tarDritto'].forEach(id => { $(id).disabled = true; });
+  try {
+    if (!(await salvaTaratura())) return;
+    if (azione === 'giro') {
+      for (let i = 0; i < 4 && ble.connesso; i++) {
+        $('tarStato').textContent = 'Giro ' + (i + 1) + ' di 4…';
+        await ble.chiedi('A90\n', 'A=', taratura.ms + 3000);
+        await sleep(400);
+      }
+      $('tarStato').textContent = 'Fatto: il robot guarda di nuovo nella direzione di partenza?';
+    } else {
+      $('tarStato').textContent = 'Avanti dritto per 2 secondi…';
+      await ble.chiedi(`G${R.vel(40)},${R.vel(40)},2000\n`, 'G=', 5000);
+      $('tarStato').textContent = 'Fatto: il robot è andato dritto?';
+    }
+  } finally { ['tarGiro', 'tarDritto'].forEach(id => { $(id).disabled = !taratura.letta; }); }
+}
+$('tarGiro').onclick = () => provaTaratura('giro');
+$('tarDritto').onclick = () => provaTaratura('dritto');
+
 $('impOk').onclick = () => {
+  if (taratura.letta && (parseInt($('tarMs').value, 10) !== taratura.ms || parseInt($('tarCorr').value, 10) !== taratura.corr)) salvaTaratura();
   impostazioni.taratura = clamp(parseInt($('taratura').value, 10) || 450, 100, 3000);
   impostazioni.soloRobot = $('soloRobot').checked;
   pref.scrivi('impostazioni', impostazioni);
